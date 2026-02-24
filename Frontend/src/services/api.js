@@ -27,13 +27,14 @@ api.interceptors.response.use(
           const { data } = await axios.post(`${baseURL}/auth/refresh`, { refresh_token: refresh });
           if (data?.data?.access_token) {
             localStorage.setItem('access_token', data.data.access_token);
-            original.headers.Authorization = `Bearer ${data.data.access_token}`;
-            return api(original);
+            const { signal: _dropped, ...retryConfig } = original;
+            retryConfig.headers = { ...retryConfig.headers, Authorization: `Bearer ${data.data.access_token}` };
+            return api(retryConfig);
           }
         } catch (_e) {
           localStorage.removeItem('access_token');
           localStorage.removeItem('refresh_token');
-          window.location.href = '/login';
+          window.dispatchEvent(new Event('auth:session-expired'));
         }
       }
     }

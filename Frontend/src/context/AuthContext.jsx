@@ -19,10 +19,14 @@ export function AuthProvider({ children }) {
       const { data } = await api.get('/auth/me', { signal: controller.signal });
       clearTimeout(timeoutId);
       if (data?.data?.user) setUser(data.data.user);
-    } catch {
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('refresh_token');
-      setUser(null);
+    } catch (err) {
+      // Only clear tokens on actual auth failures, not network/timeout errors
+      const status = err?.response?.status;
+      if (status === 401 || status === 403) {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        setUser(null);
+      }
     } finally {
       setLoading(false);
     }
@@ -31,6 +35,16 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     loadUser();
   }, [loadUser]);
+
+  // Handle session expiry dispatched by the API interceptor (avoids full-page reload)
+  useEffect(() => {
+    const handleSessionExpired = () => {
+      setUser(null);
+      setLoading(false);
+    };
+    window.addEventListener('auth:session-expired', handleSessionExpired);
+    return () => window.removeEventListener('auth:session-expired', handleSessionExpired);
+  }, []);
 
   const login = useCallback(async (payload) => {
     const { data } = await api.post('/auth/login', payload);
