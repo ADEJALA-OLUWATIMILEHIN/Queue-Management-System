@@ -21,21 +21,25 @@ export default function OrgLiveSession() {
   const [session, setSession] = useState(null);
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState('');
 
   const load = useCallback(() => {
     if (!slug || !id) return;
     setLoading(true);
-    api
-      .get(`/orgs/${slug}/sessions/${id}`)
-      .then(({ data }) => setSession(data?.data?.session))
-      .catch(() => setSession(null))
+    setLoadError(false);
+    Promise.all([
+      api.get(`/orgs/${slug}/sessions/${id}`).then(({ data }) => data?.data?.session ?? null),
+      api.get(`/orgs/${slug}/sessions/${id}/queue`).then(({ data }) => data?.data?.entries ?? []),
+    ])
+      .then(([s, e]) => {
+        if (!s) setLoadError(true);
+        setSession(s);
+        setEntries(e);
+      })
+      .catch(() => setLoadError(true))
       .finally(() => setLoading(false));
-    api
-      .get(`/orgs/${slug}/sessions/${id}/queue`)
-      .then(({ data }) => setEntries(data?.data?.entries ?? []))
-      .catch(() => setEntries([]));
   }, [slug, id]);
 
   useEffect(load, [load]);
@@ -48,8 +52,16 @@ export default function OrgLiveSession() {
       s = socket;
       s.emit('join_session_room', { sessionId: id });
       s.on('queue_update', load);
+      s.on('session_state_changed', ({ newState }) => {
+        setSession((prev) => (prev ? { ...prev, state: newState } : prev));
+      });
     });
-    return () => { if (s) s.off('queue_update', load); };
+    return () => {
+      if (s) {
+        s.off('queue_update', load);
+        s.off('session_state_changed');
+      }
+    };
   }, [id, load]);
 
   const callNext = () => {
@@ -57,7 +69,7 @@ export default function OrgLiveSession() {
     setActionLoading(true);
     api.post(`/orgs/${slug}/sessions/${id}/queue/next`)
       .then(load)
-      .catch((err) => setError(err.response?.data?.message || 'Failed to call next'))
+      .catch((err) => setError(err.response?.data?.message || "Couldn't call the next person. Please try again."))
       .finally(() => setActionLoading(false));
   };
 
@@ -66,7 +78,7 @@ export default function OrgLiveSession() {
     setActionLoading(true);
     api.post(`/orgs/${slug}/sessions/${id}/queue/complete`)
       .then(load)
-      .catch((err) => setError(err.response?.data?.message || 'Failed to mark as done'))
+      .catch((err) => setError(err.response?.data?.message || "Couldn't mark as done. Please try again."))
       .finally(() => setActionLoading(false));
   };
 
@@ -76,7 +88,7 @@ export default function OrgLiveSession() {
     setActionLoading(true);
     api.post(`/orgs/${slug}/sessions/${id}/queue/skip`, { queue_number: queueNumber })
       .then(load)
-      .catch((err) => setError(err.response?.data?.message || 'Failed to skip'))
+      .catch((err) => setError(err.response?.data?.message || "Couldn't skip this entry. Please try again."))
       .finally(() => setActionLoading(false));
   };
 
@@ -97,20 +109,35 @@ export default function OrgLiveSession() {
     );
   }
 
-  if (!session) {
+  if (loadError || !session) {
     return (
-      <div>
-        <p className="text-text-muted">Session not found.</p>
-        <Button variant="secondary" className="mt-4" onClick={() => navigate(`/org/${slug}`)}>Back</Button>
+      <div className="flex flex-col items-start gap-4">
+        <p className="text-text-secondary">
+          {loadError
+            ? "Couldn't load the session. Check your connection and try again."
+            : 'Session not found.'}
+        </p>
+        <div className="flex gap-2">
+          {loadError && <Button variant="secondary" onClick={load}>Try again</Button>}
+          <Button variant="ghost" onClick={() => navigate(`/org/${slug}`)}>Back</Button>
+        </div>
       </div>
     );
   }
 
+  const STATE_LABEL = { OPEN: 'Open', PAUSED: 'Paused', CLOSED: 'Closed', DRAFT: 'Draft' };
+
   if (session.state !== 'ACTIVE') {
     return (
-      <div>
-        <p className="text-text-muted">Session must be ACTIVE. Current state: <strong>{session.state}</strong></p>
-        <Button variant="secondary" className="mt-4" onClick={() => navigate(`/org/${slug}/sessions/${id}`)}>
+      <div className="flex flex-col items-start gap-4">
+        <p className="text-text-secondary">
+          {session.state === 'PAUSED'
+            ? 'Session is paused. Resume it from the session page to continue calling people.'
+            : session.state === 'CLOSED'
+            ? 'This session has ended.'
+            : `Session is ${STATE_LABEL[session.state] ?? session.state} and not yet running.`}
+        </p>
+        <Button variant="secondary" onClick={() => navigate(`/org/${slug}/sessions/${id}`)}>
           Back to session
         </Button>
       </div>

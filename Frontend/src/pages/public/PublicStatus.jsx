@@ -26,6 +26,7 @@ export default function PublicStatus() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [status, setStatus] = useState(null);
+  const [sessionState, setSessionState] = useState(null); // tracks live state changes
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState('');
@@ -61,8 +62,18 @@ export default function PublicStatus() {
       s = socket;
       if (status?.session_id) s.emit('join_session_room', { sessionId: status.session_id });
       s.on('queue_update', load);
+      s.on('session_state_changed', ({ newState }) => {
+        setSessionState(newState);
+        // Also refresh full status so position data stays current
+        load();
+      });
     });
-    return () => { if (s) s.off('queue_update', load); };
+    return () => {
+      if (s) {
+        s.off('queue_update', load);
+        s.off('session_state_changed');
+      }
+    };
   }, [load, status?.queue_number, status?.session_id]);
 
   const handleCancel = async () => {
@@ -126,6 +137,7 @@ export default function PublicStatus() {
   const isDone = status.status === 'completed';
   const isCancelled = status.status === 'cancelled' || status.status === 'no_show';
   const isActive = isWaiting || isServing;
+  const liveState = sessionState ?? status.session_state;
 
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4 relative overflow-hidden">
@@ -148,6 +160,18 @@ export default function PublicStatus() {
         <div className="text-center">
           <p className="text-xs font-medium text-text-muted uppercase tracking-widest">{status.session_title}</p>
         </div>
+
+        {/* Session state banners — real-time via socket */}
+        {liveState === 'PAUSED' && isActive && (
+          <div className="px-4 py-3 rounded-xl border border-warning/30 bg-warning/10 text-sm text-warning font-medium text-center">
+            Queue is paused — sit tight, it'll resume shortly.
+          </div>
+        )}
+        {liveState === 'CLOSED' && isActive && (
+          <div className="px-4 py-3 rounded-xl border border-border bg-surface-elevated text-sm text-text-muted text-center">
+            This session has ended.
+          </div>
+        )}
 
         {/* Main status card */}
         <AnimatePresence mode="wait">

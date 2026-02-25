@@ -33,11 +33,14 @@ export default function QueueStatus() {
       api.get(`/sessions/${sessionId}/queue`).then((r) => r.data?.data).catch(() => null),
     ])
       .then(([s, entryData, state]) => {
+        if (!s) {
+          setError("Couldn't load this session. Check your connection and try again.");
+        }
         setSession(s);
         setMyEntry(entryData);
         setQueueState(state);
       })
-      .catch(() => setError('Could not load queue status'))
+      .catch(() => setError("Couldn't load this session. Check your connection and try again."))
       .finally(() => setLoading(false));
   }, [sessionId]);
 
@@ -63,12 +66,16 @@ export default function QueueStatus() {
         showToast('Your turn is coming soon!');
         load();
       });
+      s.on('session_state_changed', ({ newState }) => {
+        setSession((prev) => (prev ? { ...prev, state: newState } : prev));
+      });
     });
     return () => {
       if (s) {
         s.off('queue_update');
         s.off('slot_assigned');
         s.off('your_turn_soon');
+        s.off('session_state_changed');
       }
     };
   }, [sessionId, user?.id, load, showToast]);
@@ -83,7 +90,7 @@ export default function QueueStatus() {
         setMyEntry({ type: null, entry: null });
         load();
       })
-      .catch((err) => setError(err.response?.data?.message || 'Failed to cancel'))
+      .catch((err) => setError(err.response?.data?.message || "Couldn't remove you from the queue. Please try again."))
       .finally(() => setCancelLoading(false));
   };
 
@@ -103,11 +110,12 @@ export default function QueueStatus() {
 
   if (!session && !myEntry) {
     return (
-      <div>
-        <p className="text-text-muted">Session not found or you are not in this queue.</p>
-        <Button variant="secondary" className="mt-4" onClick={() => navigate('/student')}>
-          Back to sessions
-        </Button>
+      <div className="flex flex-col items-start gap-4">
+        <p className="text-text-secondary">{error || "This session couldn't be found, or you're not in this queue."}</p>
+        <div className="flex gap-2">
+          <Button variant="secondary" onClick={load}>Try again</Button>
+          <Button variant="ghost" onClick={() => navigate('/student')}>Back to sessions</Button>
+        </div>
       </div>
     );
   }
@@ -131,7 +139,19 @@ export default function QueueStatus() {
         <h1 className="text-xl sm:text-2xl font-bold text-text-primary mb-1 break-words">{session.title}</h1>
       )}
       {session?.department?.name && (
-        <p className="text-text-secondary text-sm mb-6">{session.department.name}</p>
+        <p className="text-text-secondary text-sm mb-2">{session.department.name}</p>
+      )}
+
+      {/* Session state banners — shown when session isn't actively running */}
+      {session?.state === 'PAUSED' && (
+        <div className="mb-4 px-4 py-3 rounded-xl border border-warning/30 bg-warning/10 text-sm text-warning font-medium">
+          Session is paused — the organiser will resume shortly.
+        </div>
+      )}
+      {session?.state === 'CLOSED' && (
+        <div className="mb-4 px-4 py-3 rounded-xl border border-border bg-surface-elevated text-sm text-text-muted">
+          This session has ended.
+        </div>
       )}
 
       {error && <p className="text-sm text-danger mb-4">{error}</p>}
