@@ -95,7 +95,7 @@ export default function CreateOrgSession() {
           </div>
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-text-primary">Create queue</h1>
-            <p className="text-text-muted text-sm">A join link will be generated automatically</p>
+            <p className="text-text-muted text-sm">Queue opens immediately — share the link so people can join</p>
           </div>
         </div>
 

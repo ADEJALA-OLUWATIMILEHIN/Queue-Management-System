@@ -13,8 +13,8 @@ import { api } from '../../services/api';
 const STATE_TRANSITIONS = {
   DRAFT: [{ label: 'Open for joining', value: 'OPEN', variant: 'default' }],
   OPEN: [
-    { label: 'Start session', value: 'ACTIVE', variant: 'default' },
-    { label: 'Close', value: 'CLOSED', variant: 'destructive' },
+    { label: 'Start serving', value: 'ACTIVE', variant: 'default' },
+    { label: 'Close queue', value: 'CLOSED', variant: 'destructive' },
   ],
   ACTIVE: [
     { label: 'Pause', value: 'PAUSED', variant: 'secondary' },

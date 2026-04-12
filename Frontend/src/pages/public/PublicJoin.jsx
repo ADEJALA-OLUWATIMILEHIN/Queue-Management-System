@@ -42,6 +42,7 @@ export default function PublicJoin() {
   const { joinCode } = useParams();
   const navigate = useNavigate();
   const [queueInfo, setQueueInfo] = useState(null);
+  const [fetchError, setFetchError] = useState(null); // 'not_found' | 'server_error' | 'network_error'
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -54,7 +55,14 @@ export default function PublicJoin() {
     api
       .get(`/public/q/${joinCode.toUpperCase()}`)
       .then(({ data }) => setQueueInfo(data?.data?.session))
-      .catch(() => setQueueInfo(null))
+      .catch((err) => {
+        const status = err?.response?.status;
+        if (status === 404) setFetchError('not_found');
+        else if (status >= 500) setFetchError('server_error');
+        else if (!err?.response) setFetchError('network_error');
+        else setFetchError('not_found');
+        setQueueInfo(null);
+      })
       .finally(() => setLoading(false));
   }, [joinCode]);
 
@@ -94,14 +102,32 @@ export default function PublicJoin() {
   }
 
   if (!queueInfo) {
+    const isServerError = fetchError === 'server_error';
+    const isNetworkError = fetchError === 'network_error';
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="text-center max-w-sm">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-danger/10 border border-danger/20 mb-4">
-            <XCircle className="w-8 h-8 text-danger" />
+          <div className={`inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-4 ${isServerError || isNetworkError ? 'bg-warning/10 border border-warning/20' : 'bg-danger/10 border border-danger/20'}`}>
+            <XCircle className={`w-8 h-8 ${isServerError || isNetworkError ? 'text-warning' : 'text-danger'}`} />
           </div>
-          <h2 className="text-xl font-bold text-text-primary mb-1">Queue not found</h2>
-          <p className="text-text-muted text-sm">This join code is invalid or has expired.</p>
+          <h2 className="text-xl font-bold text-text-primary mb-1">
+            {isNetworkError ? 'Connection error' : isServerError ? 'Something went wrong' : 'Queue not found'}
+          </h2>
+          <p className="text-text-muted text-sm">
+            {isNetworkError
+              ? 'Could not reach the server. Check your connection and try again.'
+              : isServerError
+              ? 'The server encountered an error. Please try again in a moment.'
+              : 'This join code is invalid or the queue no longer exists.'}
+          </p>
+          {(isNetworkError || isServerError) && (
+            <button
+              onClick={() => window.location.reload()}
+              className="mt-4 text-sm text-primary underline underline-offset-2"
+            >
+              Try again
+            </button>
+          )}
         </motion.div>
       </div>
     );
@@ -212,9 +238,27 @@ export default function PublicJoin() {
                 <CardContent className="py-8 text-center">
                   <XCircle className="w-8 h-8 text-text-muted mx-auto mb-3" />
                   <p className="text-text-secondary font-medium">
-                    {isFull ? 'This queue is full' : 'Not accepting entries right now'}
+                    {isFull
+                      ? 'This queue is full'
+                      : queueInfo.state === 'PAUSED'
+                      ? 'Queue is paused'
+                      : queueInfo.state === 'CLOSED'
+                      ? 'This queue has ended'
+                      : queueInfo.state === 'DRAFT'
+                      ? 'Queue not open yet'
+                      : 'Not accepting entries right now'}
                   </p>
-                  <p className="text-text-muted text-sm mt-1">Check back later or contact the organizer.</p>
+                  <p className="text-text-muted text-sm mt-1">
+                    {isFull
+                      ? 'All slots are taken. Check back in case someone cancels.'
+                      : queueInfo.state === 'PAUSED'
+                      ? 'The organizer paused the queue. It should resume shortly.'
+                      : queueInfo.state === 'CLOSED'
+                      ? 'This queue is no longer accepting entries.'
+                      : queueInfo.state === 'DRAFT'
+                      ? "The organizer hasn't opened this queue yet. Try again shortly."
+                      : 'Check back later or contact the organizer.'}
+                  </p>
                 </CardContent>
               </Card>
             </motion.div>
